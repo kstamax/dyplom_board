@@ -1,8 +1,13 @@
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
 #define LED D0 
+#define GER D2
+#define RELAY D1
 // Replace with your network credentials
 const char* ssid     = "TP-Link_CC35";
 const char* password = "66433187";
+String serverName = "http://192.168.0.104:8000/gerkon/";
 
 // Set web server port number to 80
 WiFiServer server(80);
@@ -12,11 +17,9 @@ String header;
 
 // Auxiliar variables to store the current output state
 String output0State = "off";
-String output4State = "off";
-
+String output1State = "off";
+int prev_gerkon_read = LOW;
 // Assign output variables to GPIO pins
-const int output0 = 0;
-const int output4 = 5;
 
 // Current time
 unsigned long currentTime = millis();
@@ -26,15 +29,15 @@ unsigned long previousTime = 0;
 const long timeoutTime = 2000;
 
 void setup() {
-  pinMode(LED, OUTPUT);
   Serial.begin(115200);
   // Initialize the output variables as outputs
-  pinMode(output0, OUTPUT);
-  pinMode(output4, OUTPUT);
+  pinMode(LED, OUTPUT);
+  pinMode(GER, INPUT);
+  pinMode(RELAY, OUTPUT);
+  prev_gerkon_read = digitalRead(GER);
   // Set outputs to LOW
-  digitalWrite(output0, LOW);
-  digitalWrite(output4, LOW);
-
+  digitalWrite(LED, LOW);
+  digitalWrite(RELAY,LOW);
   // Connect to Wi-Fi network with SSID and password
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -52,6 +55,7 @@ void setup() {
 }
 
 void loop(){
+  HTTPClient http;
   WiFiClient client = server.available();   // Listen for incoming clients
   if (client) {                             // If a new client connects,
     Serial.println("New Client.");          // print a message out in the serial port
@@ -77,21 +81,24 @@ void loop(){
             
             // turns the GPIOs on and off
             if (header.indexOf("GET /0/off") >= 0) {
-              Serial.println("GPIO 0 on");
-              output0State = "off";
-              digitalWrite(LED, HIGH);
-            } else if (header.indexOf("GET /0/on") >= 0) {
               Serial.println("GPIO 0 off");
               output0State = "off";
               digitalWrite(LED, LOW);
-            } else if (header.indexOf("GET /4/on") >= 0) {
-              Serial.println("GPIO 4 on");
-              output4State = "on";
-              digitalWrite(output4, HIGH);
-            } else if (header.indexOf("GET /4/off") >= 0) {
-              Serial.println("GPIO 4 off");
-              output4State = "off";
-              digitalWrite(output4, LOW);
+            } else if (header.indexOf("GET /0/on") >= 0) {
+              Serial.println("GPIO 0 on");
+              output0State = "on";
+              digitalWrite(LED, HIGH);
+            }  else if (header.indexOf("GET /2") >= 0) {
+              if (digitalRead(GER) == HIGH){
+                Serial.println("GPIO 1 HIGH");
+                output1State = "on";
+                digitalWrite(RELAY, HIGH);
+              }
+              else{
+                Serial.println("GPIO 1 LOW");
+                output1State = "off";
+                digitalWrite(RELAY, LOW);
+              }
             }
             
             // Display the HTML web page
@@ -112,19 +119,10 @@ void loop(){
             client.println("<p>GPIO 0 - State " + output0State + "</p>");
             // If the output5State is off, it displays the ON button       
             if (output0State=="off") {
-              client.println("<p><a href=\"/5/on\"><button class=\"button\">ON</button></a></p>");
+              client.println("<p><a href=\"/0/on\"><button class=\"button\">ON</button></a></p>");
             } else {
-              client.println("<p><a href=\"/5/off\"><button class=\"button button2\">OFF</button></a></p>");
+              client.println("<p><a href=\"/0/off\"><button class=\"button button2\">OFF</button></a></p>");
             } 
-               
-            // Display current state, and ON/OFF buttons for GPIO 4  
-            client.println("<p>GPIO 4 - State " + output4State + "</p>");
-            // If the output4State is off, it displays the ON button       
-            if (output4State=="off") {
-              client.println("<p><a href=\"/4/on\"><button class=\"button\">ON</button></a></p>");
-            } else {
-              client.println("<p><a href=\"/4/off\"><button class=\"button button2\">OFF</button></a></p>");
-            }
             client.println("</body></html>");
             
             // The HTTP response ends with another blank line
@@ -146,4 +144,21 @@ void loop(){
     Serial.println("Client disconnected.");
     Serial.println("");
   }
+  int gerkon_read = digitalRead(GER);
+  if (gerkon_read != prev_gerkon_read){
+    if (gerkon_read == HIGH){
+      String serverPath = serverName + "1";
+      http.begin(client, serverPath.c_str());
+      int httpResponseCode = http.GET();
+      digitalWrite(LED, HIGH);
+    }
+    else{
+      String serverPath = serverName + "0";
+      http.begin(client, serverPath.c_str());
+      int httpResponseCode = http.GET();
+      digitalWrite(LED, LOW);
+    }
+    prev_gerkon_read = gerkon_read;
+  }
+  
 }
