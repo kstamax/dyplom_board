@@ -16,6 +16,7 @@ const long utcOffsetInSeconds = 0;
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+HTTPClient http;
 
 WiFiServer server(80);
 
@@ -25,7 +26,7 @@ String header;
 // Auxiliar variables to store the current output state
 String output0State = "off";
 String output1State = "off";
-int prev_gerkon_read = LOW;
+bool prev_gerkon_read = LOW;
 // Assign output variables to GPIO pins
 
 // Current time
@@ -86,16 +87,20 @@ void loop() {
             // turns the GPIOs on and off
             if (header.indexOf("GET /0/off") >= 0) {
               output0State = "off";
+              device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output set LOW\",\"type\":\"INFO\"}",  "api/device/");
               digitalWrite(LED, LOW);
             } else if (header.indexOf("GET /0/on") >= 0) {
               output0State = "on";
+              device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output set HIGH\",\"type\":\"INFO\"}",  "api/device/");
               digitalWrite(LED, HIGH);
             } else if (header.indexOf("GET /2") >= 0) {
               if (digitalRead(GER) == HIGH) {
                 output1State = "on";
+                device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output set HIGH\",\"type\":\"INFO\"}",  "api/device/");
                 digitalWrite(RELAY, HIGH);
               } else {
                 output1State = "off";
+                device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output set LOW\",\"type\":\"INFO\"}",  "api/device/");
                 digitalWrite(RELAY, LOW);
               }
             }
@@ -115,37 +120,44 @@ void loop() {
     Serial.println("Client disconnected.");
     Serial.println("");
   }
-  int gerkon_read = digitalRead(GER);
-  int httpResponseCode = -1;
+  check_gerkon();
+  delay(100);
+}
+
+void check_gerkon(){
+  bool gerkon_read = digitalRead(GER);
   if (gerkon_read != prev_gerkon_read) {
-    timeClient.begin();
-    timeClient.update();
-    //Get a date structure
-    time_t epochTime = timeClient.getEpochTime();
-    struct tm *ptm = gmtime ((time_t *)&epochTime); 
-    int monthDay = ptm->tm_mday;
-    int currentMonth = ptm->tm_mon+1;
-    int currentYear = ptm->tm_year+1900;
-    //Complete date:
-    String currentDate = String(currentYear) + "-" + String(currentMonth) + "-" + String(monthDay);
-    String postJSONdata = "{\"api_key\":\""+api_key+"\",\"date\":\""+currentDate+"\",\"time\":\""+timeClient.getFormattedTime()+"\"";
-    timeClient.end();
-    HTTPClient http;
-    String serverPath = serverName + "api/gerkon/";
     if (gerkon_read == HIGH) {
-      postJSONdata = postJSONdata + ",\"state\":\"1\"}";
+      device_log("{"+apiKeyAndDateTime() + ",\"state\":\"1\"}", "api/gerkon/");
       digitalWrite(LED, HIGH);
     } else {
-      postJSONdata = postJSONdata + ",\"state\":\"0\"}";
+      device_log("{"+apiKeyAndDateTime() + ",\"state\":\"0\"}", "api/gerkon/");
       digitalWrite(LED, LOW);
-    }
-    http.begin(client, serverPath.c_str());
-    http.addHeader("Content-Type", "application/json");
-    int httpResponseCode = http.POST(postJSONdata);
-    http.end();
-    if (httpResponseCode == -1) {
     }
     prev_gerkon_read = gerkon_read;
   }
-  delay(100);
+}
+
+void device_log(String msg, String p){
+  WiFiClient client2;
+  String serverPath = serverName + p;
+  http.begin(client2, serverPath.c_str());
+  http.addHeader("Content-Type", "application/json");
+  int httpResponseCode = http.POST(msg);
+  http.end();
+}
+
+String apiKeyAndDateTime(){
+  timeClient.begin();
+  timeClient.update();
+  //Get a date structure
+  time_t epochTime = timeClient.getEpochTime();
+  struct tm *ptm = gmtime ((time_t *)&epochTime); 
+  int monthDay = ptm->tm_mday;
+  int currentMonth = ptm->tm_mon+1;
+  int currentYear = ptm->tm_year+1900;
+  String currentDate = String(currentYear) + "-" + String(currentMonth) + "-" + String(monthDay);
+  String resultStr = "\"api_key\":\""+api_key+"\",\"date\":\""+currentDate+"\",\"time\":\""+timeClient.getFormattedTime()+"\"";
+  timeClient.end();
+  return resultStr;
 }
