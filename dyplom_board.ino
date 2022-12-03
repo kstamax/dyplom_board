@@ -9,9 +9,10 @@
 
 const char* ssid = "TP-Link_CC35";
 const char* password = "66433187";
-String serverName = "http://192.168.0.104:8000/gerkon/";
+const String api_key = "poberezhnyi";
+String serverName = "http://192.168.0.104:8000/";
 
-const long utcOffsetInSeconds = 3600;
+const long utcOffsetInSeconds = 0;
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
@@ -77,64 +78,27 @@ void loop() {
         Serial.write(c);         // print it out the serial monitor
         header += c;
         if (c == '\n') {  // if the byte is a newline character
-          // if the current line is blank, you got two newline characters in a row.
-          // that's the end of the client HTTP request, so send a response:
           if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
+            client.println("HTTP/1.1 204 No Content");
             client.println("Connection: close");
             client.println();
 
             // turns the GPIOs on and off
             if (header.indexOf("GET /0/off") >= 0) {
-              Serial.println("GPIO 0 off");
               output0State = "off";
               digitalWrite(LED, LOW);
             } else if (header.indexOf("GET /0/on") >= 0) {
-              Serial.println("GPIO 0 on");
               output0State = "on";
               digitalWrite(LED, HIGH);
             } else if (header.indexOf("GET /2") >= 0) {
               if (digitalRead(GER) == HIGH) {
-                Serial.println("GPIO 1 HIGH");
                 output1State = "on";
                 digitalWrite(RELAY, HIGH);
               } else {
-                Serial.println("GPIO 1 LOW");
                 output1State = "off";
                 digitalWrite(RELAY, LOW);
               }
             }
-
-            // Display the HTML web page
-            client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-            client.println("<link rel=\"icon\" href=\"data:,\">");
-            // CSS to style the on/off buttons
-            // Feel free to change the background-color and font-size attributes to fit your preferences
-            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
-            client.println(".button { background-color: #195B6A; border: none; color: white; padding: 16px 40px;");
-            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
-            client.println(".button2 {background-color: #77878A;}</style></head>");
-
-            // Web Page Heading
-            client.println("<body><h1>ESP8266 Web Server</h1>");
-
-            // Display current state, and ON/OFF buttons for GPIO 5
-            client.println("<p>GPIO 0 - State " + output0State + "</p>");
-            // If the output5State is off, it displays the ON button
-            if (output0State == "off") {
-              client.println("<p><a href=\"/0/on\"><button class=\"button\">ON</button></a></p>");
-            } else {
-              client.println("<p><a href=\"/0/off\"><button class=\"button button2\">OFF</button></a></p>");
-            }
-            client.println("</body></html>");
-
-            // The HTTP response ends with another blank line
-            client.println();
-            // Break out of the while loop
             break;
           } else {  // if you got a newline, then clear currentLine
             currentLine = "";
@@ -156,19 +120,28 @@ void loop() {
   if (gerkon_read != prev_gerkon_read) {
     timeClient.begin();
     timeClient.update();
-    String time_str = String(timeClient.getHours())+String("/")+timeClient.getMinutes()+String("/")+timeClient.getSeconds();
+    //Get a date structure
+    time_t epochTime = timeClient.getEpochTime();
+    struct tm *ptm = gmtime ((time_t *)&epochTime); 
+    int monthDay = ptm->tm_mday;
+    int currentMonth = ptm->tm_mon+1;
+    int currentYear = ptm->tm_year+1900;
+    //Complete date:
+    String currentDate = String(currentYear) + "-" + String(currentMonth) + "-" + String(monthDay);
+    String postJSONdata = "{\"api_key\":\""+api_key+"\",\"date\":\""+currentDate+"\",\"time\":\""+timeClient.getFormattedTime()+"\"";
     timeClient.end();
     HTTPClient http;
-    String serverPath = serverName;
+    String serverPath = serverName + "api/gerkon/";
     if (gerkon_read == HIGH) {
-      serverPath = serverPath + "1/" + time_str;
+      postJSONdata = postJSONdata + ",\"state\":\"1\"}";
       digitalWrite(LED, HIGH);
     } else {
-      serverPath = serverPath + "0/" + time_str;
+      postJSONdata = postJSONdata + ",\"state\":\"0\"}";
       digitalWrite(LED, LOW);
     }
     http.begin(client, serverPath.c_str());
-    httpResponseCode = http.GET();
+    http.addHeader("Content-Type", "application/json");
+    int httpResponseCode = http.POST(postJSONdata);
     http.end();
     if (httpResponseCode == -1) {
     }
