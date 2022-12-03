@@ -61,11 +61,9 @@ void setup() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   server.begin();
-  timeClient.begin();
 }
 
 void loop() {
-  HTTPClient http;
   WiFiClient client = server.available();  // Listen for incoming clients
   if (client) {                            // If a new client connects,
     Serial.println("New Client.");         // print a message out in the serial port
@@ -156,22 +154,25 @@ void loop() {
   int gerkon_read = digitalRead(GER);
   int httpResponseCode = -1;
   if (gerkon_read != prev_gerkon_read) {
+    timeClient.begin();
     timeClient.update();
+    String time_str = String(timeClient.getHours())+String("/")+timeClient.getMinutes()+String("/")+timeClient.getSeconds();
+    timeClient.end();
+    HTTPClient http;
+    String serverPath = serverName;
     if (gerkon_read == HIGH) {
-      String serverPath = serverName + "1/" + timeClient.getFormattedTime();
-      http.begin(client, serverPath.c_str());
-      httpResponseCode = http.GET();
-      Serial.println(httpResponseCode);
+      serverPath = serverPath + "1/" + time_str;
       digitalWrite(LED, HIGH);
     } else {
-      String serverPath = serverName + "0/" + timeClient.getFormattedTime();
-      http.begin(client, serverPath.c_str());
-      httpResponseCode = http.GET();
-      Serial.println(httpResponseCode);
+      serverPath = serverPath + "0/" + time_str;
       digitalWrite(LED, LOW);
     }
+    http.begin(client, serverPath.c_str());
+    httpResponseCode = http.GET();
+    http.end();
     if (httpResponseCode == -1) {
     }
     prev_gerkon_read = gerkon_read;
   }
+  delay(100);
 }
