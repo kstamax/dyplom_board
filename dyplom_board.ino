@@ -20,29 +20,22 @@ HTTPClient http;
 
 WiFiServer server(80);
 
-// Variable to store the HTTP request
 String header;
 
 bool prev_gerkon_read = LOW;
 
-// Current time
 unsigned long currentTime = millis();
-// Previous time
 unsigned long previousTime = 0;
-// Define timeout time in milliseconds (example: 2000ms = 2s)
 const long timeoutTime = 2000;
 
 void setup() {
   Serial.begin(115200);
-  // Initialize the output variables as outputs
   pinMode(LED, OUTPUT);
   pinMode(GER, INPUT);
   pinMode(RELAY, OUTPUT);
   prev_gerkon_read = digitalRead(GER);
-  // Set outputs to LOW
   digitalWrite(LED, LOW);
   digitalWrite(RELAY, HIGH);
-  // Connect to Wi-Fi network with SSID and password
   Serial.print("Connecting to ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
@@ -53,7 +46,6 @@ void setup() {
     delay(250);
     Serial.print(".");
   }
-  // Print local IP address and start web server
   Serial.println("");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
@@ -93,23 +85,22 @@ void rebootLog(){
 }
 
 void httpServer(){
-  WiFiClient client = server.available();  // Listen for incoming clients
-  if (client) {                            // If a new client connects,
-    String currentLine = "";               // make a String to hold incoming data from the client
+  WiFiClient client = server.available();
+  if (client) {
+    String currentLine = "";
     currentTime = millis();
     previousTime = currentTime;
-    while (client.connected() && currentTime - previousTime <= timeoutTime) {  // loop while the client's connected
+    while (client.connected() && currentTime - previousTime <= timeoutTime) {
       currentTime = millis();
-      if (client.available()) {  // if there's bytes to read from the client,
-        char c = client.read();  // read a byte, then
+      if (client.available()) {
+        char c = client.read();
         header += c;
-        if (c == '\n') {  // if the byte is a newline character
+        if (c == '\n') {
           if (currentLine.length() == 0) {
             client.println("HTTP/1.1 204 No Content");
             client.println("Connection: close");
             client.println();
 
-            // turns the GPIOs on and off
             if (header.indexOf("GET /0/off") >= 0) {
               device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output was set LOW\",\"type\":\"INFO\"}",  "api/device/");
               digitalWrite(LED, LOW);
@@ -128,11 +119,11 @@ void httpServer(){
               ESP.reset();
             }
             break;
-          } else {  // if you got a newline, then clear currentLine
+          } else {
             currentLine = "";
           }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
+        } else if (c != '\r') {
+          currentLine += c;
         }
       }
     }
