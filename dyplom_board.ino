@@ -23,11 +23,7 @@ WiFiServer server(80);
 // Variable to store the HTTP request
 String header;
 
-// Auxiliar variables to store the current output state
-String output0State = "off";
-String output1State = "off";
 bool prev_gerkon_read = LOW;
-// Assign output variables to GPIO pins
 
 // Current time
 unsigned long currentTime = millis();
@@ -66,9 +62,28 @@ void setup() {
 }
 
 void loop() {
+  httpServer();
+  checkGerkon();
+  delay(100);
+}
+
+void checkGerkon(){
+  bool gerkon_read = digitalRead(GER);
+  if (gerkon_read != prev_gerkon_read) {
+    if (gerkon_read == HIGH) {
+      device_log("{"+apiKeyAndDateTime() + ",\"state\":\"1\"}", "api/gerkon/");
+      digitalWrite(LED, HIGH);
+    } else {
+      device_log("{"+apiKeyAndDateTime() + ",\"state\":\"0\"}", "api/gerkon/");
+      digitalWrite(LED, LOW);
+    }
+    prev_gerkon_read = gerkon_read;
+  }
+}
+
+void httpServer(){
   WiFiClient client = server.available();  // Listen for incoming clients
   if (client) {                            // If a new client connects,
-    Serial.println("New Client.");         // print a message out in the serial port
     String currentLine = "";               // make a String to hold incoming data from the client
     currentTime = millis();
     previousTime = currentTime;
@@ -76,7 +91,6 @@ void loop() {
       currentTime = millis();
       if (client.available()) {  // if there's bytes to read from the client,
         char c = client.read();  // read a byte, then
-        Serial.write(c);         // print it out the serial monitor
         header += c;
         if (c == '\n') {  // if the byte is a newline character
           if (currentLine.length() == 0) {
@@ -86,20 +100,16 @@ void loop() {
 
             // turns the GPIOs on and off
             if (header.indexOf("GET /0/off") >= 0) {
-              output0State = "off";
               device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output set LOW\",\"type\":\"INFO\"}",  "api/device/");
               digitalWrite(LED, LOW);
             } else if (header.indexOf("GET /0/on") >= 0) {
-              output0State = "on";
               device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output set HIGH\",\"type\":\"INFO\"}",  "api/device/");
               digitalWrite(LED, HIGH);
             } else if (header.indexOf("GET /2") >= 0) {
               if (digitalRead(GER) == HIGH) {
-                output1State = "on";
                 device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output set HIGH\",\"type\":\"INFO\"}",  "api/device/");
                 digitalWrite(RELAY, HIGH);
               } else {
-                output1State = "off";
                 device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output set LOW\",\"type\":\"INFO\"}",  "api/device/");
                 digitalWrite(RELAY, LOW);
               }
@@ -113,28 +123,8 @@ void loop() {
         }
       }
     }
-    // Clear the header variable
     header = "";
-    // Close the connection
     client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
-  }
-  check_gerkon();
-  delay(100);
-}
-
-void check_gerkon(){
-  bool gerkon_read = digitalRead(GER);
-  if (gerkon_read != prev_gerkon_read) {
-    if (gerkon_read == HIGH) {
-      device_log("{"+apiKeyAndDateTime() + ",\"state\":\"1\"}", "api/gerkon/");
-      digitalWrite(LED, HIGH);
-    } else {
-      device_log("{"+apiKeyAndDateTime() + ",\"state\":\"0\"}", "api/gerkon/");
-      digitalWrite(LED, LOW);
-    }
-    prev_gerkon_read = gerkon_read;
   }
 }
 
