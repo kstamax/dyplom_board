@@ -41,7 +41,7 @@ void setup() {
   prev_gerkon_read = digitalRead(GER);
   // Set outputs to LOW
   digitalWrite(LED, LOW);
-  digitalWrite(RELAY, LOW);
+  digitalWrite(RELAY, HIGH);
   // Connect to Wi-Fi network with SSID and password
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -59,6 +59,7 @@ void setup() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   server.begin();
+  rebootLog();
 }
 
 void loop() {
@@ -81,6 +82,16 @@ void checkGerkon(){
   }
 }
 
+void rebootLog(){
+  if((ESP.getResetReason()== "External System") || (ESP.getResetReason()== "Software/System restart")){
+    device_log("{"+apiKeyAndDateTime()+",\"action\":\"Device rebooted, reason: "+ESP.getResetReason()+"\",\"type\":\"INFO\"}",  "api/device/");
+  }
+  else{
+   device_log("{"+apiKeyAndDateTime()+",\"action\":\"Device rebooted, reason: "+ESP.getResetReason()+"\",\"type\":\"ERROR\"}",  "api/device/");
+  }
+  
+}
+
 void httpServer(){
   WiFiClient client = server.available();  // Listen for incoming clients
   if (client) {                            // If a new client connects,
@@ -100,19 +111,21 @@ void httpServer(){
 
             // turns the GPIOs on and off
             if (header.indexOf("GET /0/off") >= 0) {
-              device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output set LOW\",\"type\":\"INFO\"}",  "api/device/");
+              device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output was set LOW\",\"type\":\"INFO\"}",  "api/device/");
               digitalWrite(LED, LOW);
             } else if (header.indexOf("GET /0/on") >= 0) {
-              device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output set HIGH\",\"type\":\"INFO\"}",  "api/device/");
+              device_log("{"+apiKeyAndDateTime()+",\"action\":\"LED output was set HIGH\",\"type\":\"INFO\"}",  "api/device/");
               digitalWrite(LED, HIGH);
-            } else if (header.indexOf("GET /2") >= 0) {
-              if (digitalRead(GER) == HIGH) {
-                device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output set HIGH\",\"type\":\"INFO\"}",  "api/device/");
-                digitalWrite(RELAY, HIGH);
-              } else {
-                device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output set LOW\",\"type\":\"INFO\"}",  "api/device/");
-                digitalWrite(RELAY, LOW);
-              }
+            } else if (header.indexOf("GET /1/on") >= 0) {
+              device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output was set LOW\",\"type\":\"INFO\"}",  "api/device/");
+              digitalWrite(RELAY, LOW);
+            } else if (header.indexOf("GET /1/off") >= 0) {
+              device_log("{"+apiKeyAndDateTime()+",\"action\":\"RELAY output was set HIGH\",\"type\":\"INFO\"}",  "api/device/");
+              digitalWrite(RELAY, HIGH);
+            }
+            else if (header.indexOf("GET /reset") >= 0) {
+              device_log("{"+apiKeyAndDateTime()+",\"action\":\"Device was reset\",\"type\":\"INFO\"}",  "api/device/");
+              ESP.reset();
             }
             break;
           } else {  // if you got a newline, then clear currentLine
